@@ -18,10 +18,7 @@ COLLECTION_NAME = "medical_knowledge"
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-QDRANT_URL = (
-    "https://5c4b8d6c-900a-47a8-a5b7-77fc02364f1a."
-    "us-east-1-1.aws.cloud.qdrant.io"
-)
+QDRANT_URL = os.getenv("QDRANT_URL")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,79 +45,79 @@ def get_embeddings():
     )
 
 
-def create_vector_store(chunks):
-    """
-    Create or rebuild the LOCAL Qdrant collection.
+# def create_vector_store(chunks):
+#     """
+#     Create or rebuild the LOCAL Qdrant collection.
 
-    This function is intended for document ingestion and indexing.
-    It does not modify the Qdrant Cloud collection.
-    """
+#     This function is intended for document ingestion and indexing.
+#     It does not modify the Qdrant Cloud collection.
+#     """
 
-    if not chunks:
-        logger.warning("No document chunks provided")
-        return
+#     if not chunks:
+#         logger.warning("No document chunks provided")
+#         return
 
-    documents = []
+#     documents = []
 
-    for chunk in chunks:
-        if not isinstance(chunk, dict) or "text" not in chunk:
-            raise ValueError(
-                "Expected each chunk to contain 'text' and 'metadata'. "
-                f"Received: {type(chunk).__name__}"
-            )
+#     for chunk in chunks:
+#         if not isinstance(chunk, dict) or "text" not in chunk:
+#             raise ValueError(
+#                 "Expected each chunk to contain 'text' and 'metadata'. "
+#                 f"Received: {type(chunk).__name__}"
+#             )
 
-        documents.append(
-            Document(
-                page_content=chunk["text"],
-                metadata=chunk.get("metadata", {}),
-            )
-        )
+#         documents.append(
+#             Document(
+#                 page_content=chunk["text"],
+#                 metadata=chunk.get("metadata", {}),
+#             )
+#         )
 
-    LOCAL_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
+#     LOCAL_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
 
-    logger.info(
-        "Opening local Qdrant database: %s",
-        LOCAL_QDRANT_PATH,
-    )
+#     logger.info(
+#         "Opening local Qdrant database: %s",
+#         LOCAL_QDRANT_PATH,
+#     )
 
-    client = QdrantClient(path=str(LOCAL_QDRANT_PATH))
+#     client = QdrantClient(path=str(LOCAL_QDRANT_PATH))
 
-    try:
-        embeddings = get_embeddings()
+#     try:
+#         embeddings = get_embeddings()
 
-        if client.collection_exists(COLLECTION_NAME):
-            logger.info(
-                "Deleting existing LOCAL collection: %s",
-                COLLECTION_NAME,
-            )
-            client.delete_collection(COLLECTION_NAME)
+#         if client.collection_exists(COLLECTION_NAME):
+#             logger.info(
+#                 "Deleting existing LOCAL collection: %s",
+#                 COLLECTION_NAME,
+#             )
+#             client.delete_collection(COLLECTION_NAME)
 
-        vector_size = len(
-            embeddings.embed_query("medical knowledge")
-        )
+#         vector_size = len(
+#             embeddings.embed_query("medical knowledge")
+#         )
 
-        client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=models.VectorParams(
-                size=vector_size,
-                distance=models.Distance.COSINE,
-            ),
-        )
+#         client.create_collection(
+#             collection_name=COLLECTION_NAME,
+#             vectors_config=models.VectorParams(
+#                 size=vector_size,
+#                 distance=models.Distance.COSINE,
+#             ),
+#         )
 
-        vector_store = QdrantVectorStore(
-            client=client,
-            collection_name=COLLECTION_NAME,
-            embedding=embeddings,
-        )
+#         vector_store = QdrantVectorStore(
+#             client=client,
+#             collection_name=COLLECTION_NAME,
+#             embedding=embeddings,
+#         )
 
-        vector_store.add_documents(documents)
+#         vector_store.add_documents(documents)
 
-        logger.info("Local indexing completed successfully")
-        logger.info("Collection: %s", COLLECTION_NAME)
-        logger.info("Indexed documents: %d", len(documents))
+#         logger.info("Local indexing completed successfully")
+#         logger.info("Collection: %s", COLLECTION_NAME)
+#         logger.info("Indexed documents: %d", len(documents))
 
-    finally:
-        client.close()
+#     finally:
+#         client.close()
 
 
 def search_medical_documents(
@@ -150,11 +147,17 @@ def search_medical_documents(
 
     cloud_url = qdrant_url or os.getenv("QDRANT_URL") or QDRANT_URL
     cloud_api_key = api_key or os.getenv("QDRANT_API_KEY")
+    
+    if not cloud_url:
+        raise ValueError(
+            "QDRANT_URL is missing. "
+            "Configure it using the environment variable."
+        )
 
     if not cloud_api_key:
         raise ValueError(
             "QDRANT_API_KEY is missing. "
-            "Pass api_key or configure it at runtime."
+            "Configure it using the environment variable."
         )
 
     logger.info("Connecting to Qdrant Cloud")
