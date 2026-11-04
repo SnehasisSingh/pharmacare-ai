@@ -1,5 +1,5 @@
 
-name: PharmaCare - Automated Qdrant Ingestion
+name: pharmaCare-automated-qdrant-ingestion
 
 on:
   push:
