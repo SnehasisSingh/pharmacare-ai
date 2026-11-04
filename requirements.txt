@@ -10,3 +10,6 @@ pypdf
 streamlit
 boto3
 pytest
+qdrant-client
+langchain-qdrant
+langchain-huggingface
