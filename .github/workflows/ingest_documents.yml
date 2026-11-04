@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - develop
     paths:
       - "knowledge_base_doc/sample_documents/**"
 
