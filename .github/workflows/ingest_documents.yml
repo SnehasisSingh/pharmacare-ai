@@ -8,6 +8,9 @@ on:
       - develop
     paths:
       - "knowledge_base_doc/sample_documents/**"
+      - "pharma_rag/ingestion/**"
+      - "pharma_rag/retrieval/**"
+      - "requirements.txt"
 
   workflow_dispatch:
 
@@ -32,19 +35,32 @@ jobs:
 
       - name: Install dependencies
         run: |
+          echo "Installing Python dependencies..."
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          echo "Dependencies installed successfully."
+
+      - name: Verify repository files
+        run: |
+          echo "Checking ingestion script..."
+          ls -l pharma_rag/ingestion/cloud_ingestion.py
+
+          echo "Checking medical documents..."
+          find knowledge_base_doc/sample_documents -type f
 
       - name: Validate configuration
         env:
           QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
           QDRANT_URL: ${{ vars.QDRANT_URL }}
         run: |
-          python -c "import os; assert os.getenv('QDRANT_API_KEY'), 'QDRANT_API_KEY is missing'; assert os.getenv('QDRANT_URL'), 'QDRANT_URL is missing'; print('Qdrant configuration validated')"
+          python -u -c "import os; assert os.getenv('QDRANT_API_KEY'), 'QDRANT_API_KEY is missing'; assert os.getenv('QDRANT_URL'), 'QDRANT_URL is missing'; print('Qdrant configuration validated')"
 
       - name: Run automated PDF ingestion
         env:
           QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
           QDRANT_URL: ${{ vars.QDRANT_URL }}
+          PYTHONUNBUFFERED: "1"
         run: |
-          python pharma_rag/ingestion/cloud_ingestion.py
+          echo "Starting automated medical PDF ingestion..."
+          python -u pharma_rag/ingestion/cloud_ingestion.py
+          echo "Medical PDF ingestion completed successfully."
