@@ -64,7 +64,39 @@ def get_point_id(source, page, start_index, text):
         uuid.uuid5(POINT_NAMESPACE, identity)
     )
 
+def ensure_collection(client, embeddings):
+    """Create Qdrant collection if it does not exist."""
 
+    if client.collection_exists(COLLECTION_NAME):
+        logger.info(
+            "Collection '%s' already exists. Updating existing collection.",
+            COLLECTION_NAME,
+        )
+        return
+
+    logger.info(
+        "Collection '%s' not found. Creating new collection...",
+        COLLECTION_NAME,
+    )
+
+    vector_size = len(
+        embeddings.embed_query("Medical knowledge")
+    )
+
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=models.VectorParams(
+            size=vector_size,
+            distance=models.Distance.COSINE,
+        ),
+    )
+
+    logger.info(
+        "Collection '%s' created successfully. Vector size: %d",
+        COLLECTION_NAME,
+        vector_size,
+    )
+    
 def get_source_filter(source):
     """Build a Qdrant filter for one source document."""
 
@@ -312,14 +344,12 @@ def main():
     )
 
     try:
-        if not client.collection_exists(COLLECTION_NAME):
-            raise ValueError(
-                f"Qdrant collection not found: {COLLECTION_NAME}"
-            )
-
-        ensure_payload_indexes(client)
 
         embeddings = get_embeddings()
+        
+        ensure_collection(client, embeddings)
+        
+        ensure_payload_indexes(client)
 
         # Synchronize new and modified documents.
         for source, source_chunks in chunks_by_source.items():
