@@ -1,0 +1,49 @@
+
+name: PharmaCare - Automated Qdrant Ingestion
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "knowledge_base_doc/sample_documents/**"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ingest-medical-documents:
+    name: Ingest Medical PDFs into Qdrant
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate configuration
+        env:
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          QDRANT_URL: ${{ vars.QDRANT_URL }}
+        run: |
+          python -c "import os; assert os.getenv('QDRANT_API_KEY'), 'QDRANT_API_KEY is missing'; assert os.getenv('QDRANT_URL'), 'QDRANT_URL is missing'; print('Qdrant configuration validated')"
+
+      - name: Run automated PDF ingestion
+        env:
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          QDRANT_URL: ${{ vars.QDRANT_URL }}
+        run: |
+          python pharma_rag/ingestion/cloud_ingestion.py
