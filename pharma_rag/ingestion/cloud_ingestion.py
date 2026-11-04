@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 COLLECTION_NAME = "medical_knowledge"
 
 QDRANT_URL = os.getenv("QDRANT_URL")
-api_key = os.getenv("QDRANT_API_KEY")
+API_KEY = os.getenv("QDRANT_API_KEY")
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
@@ -253,6 +253,11 @@ def main():
         raise FileNotFoundError(
             f"PDF directory not found: {DOCUMENTS_DIR}"
         )
+    if not QDRANT_URL:
+        raise ValueError("QDRANT_URL is not configured")
+
+    if not API_KEY:
+        raise ValueError("QDRANT_API_KEY is not configured")
 
     pdf_files = sorted(DOCUMENTS_DIR.glob("*.pdf"))
 
@@ -300,14 +305,9 @@ def main():
         source = chunk["metadata"]["source"]
         chunks_by_source[source].append(chunk)
 
-    api_key = __import__("os").environ.get("QDRANT_API_KEY")
-
-    if not api_key:
-        raise ValueError("QDRANT_API_KEY is not configured")
-
     client = QdrantClient(
         url=QDRANT_URL,
-        api_key=api_key,
+        api_key=API_KEY,
         timeout=60,
     )
 
