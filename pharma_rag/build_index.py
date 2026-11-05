@@ -4,7 +4,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from retrieval.vector_store import create_vector_store
+# from retrieval.vector_store import create_vector_store
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PHARMA_RAG_DIR = Path(__file__).resolve().parent
@@ -70,7 +70,7 @@ def main():
         logger.warning("No chunks available for indexing")
         return
 
-    create_vector_store(chunks)
+    # create_vector_store(chunks)
 
     logger.info("Qdrant index build process completed")
 

@@ -1,123 +1,18 @@
 
 import logging
 import os
-from functools import lru_cache
-from pathlib import Path
 
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient, models
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-LOCAL_QDRANT_PATH = PROJECT_ROOT / "data" / "qdrant_storage"
-
-COLLECTION_NAME = "medical_knowledge"
-
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
-QDRANT_URL = os.getenv("QDRANT_URL")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
-)
 
 logger = logging.getLogger(__name__)
 
+COLLECTION_NAME = os.getenv(
+    "QDRANT_COLLECTION",
+    "medical_knowledge",
+)
 
-@lru_cache(maxsize=1)
-def get_embeddings():
-    """
-    Load and cache the embedding model.
-
-    The cached instance is reused across subsequent calls,
-    including warm Lambda invocations.
-    """
-    logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
-
-    return HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
-    )
-
-
-# def create_vector_store(chunks):
-#     """
-#     Create or rebuild the LOCAL Qdrant collection.
-
-#     This function is intended for document ingestion and indexing.
-#     It does not modify the Qdrant Cloud collection.
-#     """
-
-#     if not chunks:
-#         logger.warning("No document chunks provided")
-#         return
-
-#     documents = []
-
-#     for chunk in chunks:
-#         if not isinstance(chunk, dict) or "text" not in chunk:
-#             raise ValueError(
-#                 "Expected each chunk to contain 'text' and 'metadata'. "
-#                 f"Received: {type(chunk).__name__}"
-#             )
-
-#         documents.append(
-#             Document(
-#                 page_content=chunk["text"],
-#                 metadata=chunk.get("metadata", {}),
-#             )
-#         )
-
-#     LOCAL_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
-
-#     logger.info(
-#         "Opening local Qdrant database: %s",
-#         LOCAL_QDRANT_PATH,
-#     )
-
-#     client = QdrantClient(path=str(LOCAL_QDRANT_PATH))
-
-#     try:
-#         embeddings = get_embeddings()
-
-#         if client.collection_exists(COLLECTION_NAME):
-#             logger.info(
-#                 "Deleting existing LOCAL collection: %s",
-#                 COLLECTION_NAME,
-#             )
-#             client.delete_collection(COLLECTION_NAME)
-
-#         vector_size = len(
-#             embeddings.embed_query("medical knowledge")
-#         )
-
-#         client.create_collection(
-#             collection_name=COLLECTION_NAME,
-#             vectors_config=models.VectorParams(
-#                 size=vector_size,
-#                 distance=models.Distance.COSINE,
-#             ),
-#         )
-
-#         vector_store = QdrantVectorStore(
-#             client=client,
-#             collection_name=COLLECTION_NAME,
-#             embedding=embeddings,
-#         )
-
-#         vector_store.add_documents(documents)
-
-#         logger.info("Local indexing completed successfully")
-#         logger.info("Collection: %s", COLLECTION_NAME)
-#         logger.info("Indexed documents: %d", len(documents))
-
-#     finally:
-#         client.close()
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
 def search_medical_documents(
@@ -126,82 +21,68 @@ def search_medical_documents(
     qdrant_url=None,
     api_key=None,
 ):
-    """
-    Search the Qdrant CLOUD medical knowledge collection.
-
-    Credentials can be passed explicitly or supplied through
-    runtime environment variables.
-
-    Args:
-        query: User's medical knowledge question.
-        k: Number of relevant documents to retrieve.
-        qdrant_url: Optional Qdrant Cloud URL.
-        api_key: Optional Qdrant Cloud API key.
-
-    Returns:
-        List of LangChain Document objects.
-    """
-
-    if not query or not query.strip():
-        raise ValueError("Search query cannot be empty")
-
-    cloud_url = qdrant_url or os.getenv("QDRANT_URL") or QDRANT_URL
+    cloud_url = qdrant_url or os.getenv("QDRANT_URL")
     cloud_api_key = api_key or os.getenv("QDRANT_API_KEY")
-    
+
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("A valid search query is required.")
+
     if not cloud_url:
-        raise ValueError(
-            "QDRANT_URL is missing. "
-            "Configure it using the environment variable."
-        )
+        raise ValueError("QDRANT_URL is not configured.")
 
     if not cloud_api_key:
-        raise ValueError(
-            "QDRANT_API_KEY is missing. "
-            "Configure it using the environment variable."
-        )
-
-    logger.info("Connecting to Qdrant Cloud")
-    logger.info("Collection: %s", COLLECTION_NAME)
+        raise ValueError("QDRANT_API_KEY is not configured.")
 
     client = QdrantClient(
         url=cloud_url,
         api_key=cloud_api_key,
+        cloud_inference=True,
         timeout=30,
     )
 
     try:
         if not client.collection_exists(COLLECTION_NAME):
             raise ValueError(
-                f"Cloud collection '{COLLECTION_NAME}' not found."
+                f"Qdrant collection '{COLLECTION_NAME}' does not exist."
             )
 
-        embeddings = get_embeddings()
-
-        vector_store = QdrantVectorStore(
-            client=client,
+        response = client.query_points(
             collection_name=COLLECTION_NAME,
-            embedding=embeddings,
+            query=models.Document(
+                text=query.strip(),
+                model=EMBEDDING_MODEL,
+            ),
+            limit=k,
+            with_payload=True,
         )
 
-        results = vector_store.similarity_search(
-            query=query,
-            k=k,
-        )
+        documents = []
+
+        for point in response.points:
+            payload = point.payload or {}
+
+            page_content = payload.get("page_content", "")
+            metadata = payload.get("metadata", {}) or {}
+
+            if not page_content:
+                continue
+
+            documents.append(
+                Document(
+                    page_content=page_content,
+                    metadata={
+                        **metadata,
+                        "score": point.score,
+                    },
+                )
+            )
 
         logger.info(
-            "Retrieved %d documents from Qdrant Cloud",
-            len(results),
+            "Retrieved %d documents from Qdrant.",
+            len(documents),
         )
 
-        for rank, document in enumerate(results, start=1):
-            logger.info(
-                "Result %d | Source: %s | Page: %s",
-                rank,
-                document.metadata.get("source", "unknown"),
-                document.metadata.get("page", "unknown"),
-            )
-
-        return results
+        return documents
 
     finally:
         client.close()

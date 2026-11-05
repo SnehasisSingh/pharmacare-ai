@@ -1,0 +1,72 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: PharmaCare AI - Serverless Medical RAG API
+
+Parameters:
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Anthropic API key
+
+  QdrantApiKey:
+    Type: String
+    NoEcho: true
+    Description: Qdrant Cloud API key
+
+  QdrantUrl:
+    Type: String
+    Description: Qdrant Cloud cluster URL
+
+  ClaudeModel:
+    Type: String
+    Default: claude-haiku-5-5
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Timeout: 28
+    MemorySize: 1024
+    Environment:
+      Variables:
+        ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+        ANTHROPIC_MODEL: !Ref ClaudeModel
+        QDRANT_API_KEY: !Ref QdrantApiKey
+        QDRANT_URL: !Ref QdrantUrl
+        QDRANT_COLLECTION: medical_knowledge
+
+Resources:
+  PharmaCareFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      FunctionName: pharmacare-ai-api
+      CodeUri: .
+      Handler: backend.api.handler.lambda_handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
+      Events:
+        HealthApi:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: GET
+        MedicalAskApi:
+          Type: Api
+          Properties:
+            Path: /medical/ask
+            Method: POST
+
+Outputs:
+  PharmaCareApiUrl:
+    Description: API Gateway base URL
+    Value: !Sub
+      - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+      - ApiId: !Ref ServerlessRestApi
+
+  PharmaCareFunctionName:
+    Description: Lambda function name
+    Value: !Ref PharmaCareFunction

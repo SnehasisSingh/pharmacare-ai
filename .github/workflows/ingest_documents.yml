@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   ingest-medical-documents:
-    name: Ingest Medical PDFs into Qdrant
+    name: Ingest Medical Data into Qdrant
     runs-on: ubuntu-latest
 
     steps:
