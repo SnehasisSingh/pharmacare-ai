@@ -1,0 +1,4 @@
+anthropic
+langchain-core
+langgraph
+qdrant-client

@@ -40,8 +40,6 @@ Globals:
 Resources:
   PharmaCareFunction:
     Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: makefile
     Properties:
       FunctionName: pharmacare-ai-api
       CodeUri: .
