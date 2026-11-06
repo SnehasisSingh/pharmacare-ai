@@ -36,6 +36,21 @@ jobs:
       - name: Set up SAM CLI
         uses: aws-actions/setup-sam@v2
 
+      - name: Prepare lightweight Lambda package
+        run: |
+          mkdir -p lambda_package
+
+          cp -r backend lambda_package/
+          cp -r pharma_rag lambda_package/
+
+          cp backend/requirements-lambda.txt \
+            lambda_package/requirements.txt
+
+          find lambda_package -type d -name "__pycache__" \
+            -prune -exec rm -rf {} +
+
+          find lambda_package -type f -name "*.pyc" -delete
+
       - name: Validate SAM template
         run: |
           sam validate \

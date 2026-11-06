@@ -32,7 +32,7 @@ Globals:
     Environment:
       Variables:
         ANTHROPIC_API_KEY: !Ref AnthropicApiKey
-        ANTHROPIC_MODEL: !Ref ClaudeModel
+        CLAUDE_MODEL: !Ref ClaudeModel
         QDRANT_API_KEY: !Ref QdrantApiKey
         QDRANT_URL: !Ref QdrantUrl
         QDRANT_COLLECTION: medical_knowledge
@@ -42,7 +42,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pharmacare-ai-api
-      CodeUri: .
+      CodeUri: lambda_package/
       Handler: backend.api.handler.lambda_handler
       Policies:
         - AWSLambdaBasicExecutionRole
