@@ -93,7 +93,6 @@ Resources:
     Properties:
       StageName: Stage
       Auth:
-        DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt ClinicalUserPool.Arn
@@ -119,6 +118,8 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /cases
             Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
 
         ReadCase:
           Type: Api
@@ -126,6 +127,8 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /cases/{case_id}
             Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
 
         ListCases:
           Type: Api
@@ -133,6 +136,8 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /doctor/cases
             Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
 
         DecideCase:
           Type: Api
@@ -140,7 +145,8 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /doctor/cases/{case_id}
             Method: POST
- 
+            Auth:
+              Authorizer: CognitoAuthorizer
   PharmaCareFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -156,8 +162,6 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /health
             Method: GET
-            Auth:
-              Authorizer: NONE
 
         MedicalAskApi:
           Type: Api
@@ -165,8 +169,6 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /medical/ask
             Method: POST
-            Auth:
-              Authorizer: NONE
 
 Outputs:
   PharmaCareApiUrl:
