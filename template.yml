@@ -1,23 +1,16 @@
-
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: PharmaCare AI - Serverless Medical RAG API
+Description: PharmaCare AI - shared medical RAG and clinical review API
 
 Parameters:
   AnthropicApiKey:
     Type: String
     NoEcho: true
-    Description: Anthropic API key
-
   QdrantApiKey:
     Type: String
     NoEcho: true
-    Description: Qdrant Cloud API key
-
   QdrantUrl:
     Type: String
-    Description: Qdrant Cloud cluster URL
-
   ClaudeModel:
     Type: String
     Default: claude-haiku-5-5
@@ -25,8 +18,7 @@ Parameters:
 Globals:
   Function:
     Runtime: python3.12
-    Architectures:
-      - x86_64
+    Architectures: [x86_64]
     Timeout: 28
     MemorySize: 1024
     Environment:
@@ -48,17 +40,24 @@ Resources:
       SSESpecification:
         SSEEnabled: true
       AttributeDefinitions:
-        - {AttributeName: case_id, AttributeType: S}
-        - {AttributeName: status, AttributeType: S}
-        - {AttributeName: created_at, AttributeType: S}
+        - AttributeName: case_id
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
       KeySchema:
-        - {AttributeName: case_id, KeyType: HASH}
+        - AttributeName: case_id
+          KeyType: HASH
       GlobalSecondaryIndexes:
         - IndexName: StatusCreatedIndex
           KeySchema:
-            - {AttributeName: status, KeyType: HASH}
-            - {AttributeName: created_at, KeyType: RANGE}
-          Projection: {ProjectionType: ALL}
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
@@ -66,7 +65,8 @@ Resources:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub '${AWS::StackName}-users'
-      AdminCreateUserConfig: {AllowAdminCreateUserOnly: true}
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
       Policies:
         PasswordPolicy:
           MinimumLength: 12
@@ -74,20 +74,30 @@ Resources:
           RequireLowercase: true
           RequireNumbers: true
           RequireSymbols: true
+
   PatientGroup:
     Type: AWS::Cognito::UserPoolGroup
-    Properties: {GroupName: patient, UserPoolId: !Ref ClinicalUserPool}
+    Properties:
+      GroupName: patient
+      UserPoolId: !Ref ClinicalUserPool
+
   DoctorGroup:
     Type: AWS::Cognito::UserPoolGroup
-    Properties: {GroupName: doctor, UserPoolId: !Ref ClinicalUserPool}
+    Properties:
+      GroupName: doctor
+      UserPoolId: !Ref ClinicalUserPool
+
   ClinicalUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       UserPoolId: !Ref ClinicalUserPool
       ClientName: !Sub '${AWS::StackName}-streamlit-client'
       GenerateSecret: false
-      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
       PreventUserExistenceErrors: ENABLED
+
   PharmaCareApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -96,6 +106,8 @@ Resources:
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt ClinicalUserPool.Arn
+            Identity:
+              Header: Authorization
 
   ClinicalReviewFunction:
     Type: AWS::Serverless::Function
@@ -108,7 +120,8 @@ Resources:
           PHARMACARE_CASES_TABLE: !Ref ClinicalCasesTable
       Policies:
         - AWSLambdaBasicExecutionRole
-        - DynamoDBCrudPolicy: {TableName: !Ref ClinicalCasesTable}
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ClinicalCasesTable
       Events:
         SubmitCase:
           Type: Api
@@ -118,33 +131,31 @@ Resources:
             Method: POST
             Auth:
               Authorizer: CognitoAuthorizer
-
         ReadCase:
           Type: Api
           Properties:
-            RestApiId: !Ref ServerlessRestApi
+            RestApiId: !Ref PharmaCareApi
             Path: /cases/{case_id}
             Method: GET
             Auth:
               Authorizer: CognitoAuthorizer
-
         ListCases:
           Type: Api
           Properties:
-            RestApiId: !Ref ServerlessRestApi
+            RestApiId: !Ref PharmaCareApi
             Path: /doctor/cases
             Method: GET
             Auth:
               Authorizer: CognitoAuthorizer
-
         DecideCase:
           Type: Api
           Properties:
-            RestApiId: !Ref ServerlessRestApi
+            RestApiId: !Ref PharmaCareApi
             Path: /doctor/cases/{case_id}
             Method: POST
             Auth:
               Authorizer: CognitoAuthorizer
+
   PharmaCareFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -160,39 +171,25 @@ Resources:
             RestApiId: !Ref PharmaCareApi
             Path: /health
             Method: GET
-
         MedicalAskApi:
           Type: Api
           Properties:
-            RestApiId: !Ref ServerlessRestApi
+            RestApiId: !Ref PharmaCareApi
             Path: /medical/ask
             Method: POST
 
 Outputs:
   PharmaCareApiUrl:
     Description: Shared PharmaCare API Gateway URL
-    Value: !Sub
-      - 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Stage'
-      - ApiId: !Ref ServerlessRestApi
-
-  PharmaCareFunctionName:
-    Description: Lambda function name
-    Value: !Ref PharmaCareFunction
-
+    Value: !Sub 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Stage'
   ClinicalReviewApiUrl:
-    Description: Clinical review API URL using shared API Gateway
-    Value: !Sub
-      - 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Stage'
-      - ApiId: !Ref ServerlessRestApi
-
+    Description: Same API Gateway base URL; clinical endpoints require Cognito
+    Value: !Sub 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Stage'
+  PharmaCareFunctionName:
+    Value: !Ref PharmaCareFunction
   ClinicalUserPoolId:
-    Description: Cognito User Pool ID
     Value: !Ref ClinicalUserPool
-
   ClinicalUserPoolClientId:
-    Description: Cognito application client ID
     Value: !Ref ClinicalUserPoolClient
-
   ClinicalCasesTableName:
-    Description: DynamoDB clinical cases table name
     Value: !Ref ClinicalCasesTable
