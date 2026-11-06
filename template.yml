@@ -154,15 +154,12 @@ Resources:
         - AWSLambdaBasicExecutionRole
 
       Events:
-
         HealthApi:
           Type: Api
           Properties:
             RestApiId: !Ref PharmaCareApi
             Path: /health
             Method: GET
-            Auth:
-              Authorizer: NONE
 
         MedicalAskApi:
           Type: Api
@@ -170,10 +167,6 @@ Resources:
             RestApiId: !Ref PharmaCareApi
             Path: /medical/ask
             Method: POST
-            Auth:
-              Authorizer: NONE
-
-
 Outputs:
 
   PharmaCareApiUrl:
