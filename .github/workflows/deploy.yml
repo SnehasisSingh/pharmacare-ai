@@ -38,18 +38,13 @@ jobs:
 
       - name: Prepare lightweight Lambda package
         run: |
+          rm -rf lambda_package
           mkdir -p lambda_package
-
-          cp -r backend lambda_package/
-          cp -r pharma_rag lambda_package/
-
-          cp backend/requirements-lambda.txt \
-            lambda_package/requirements.txt
-
-          find lambda_package -type d -name "__pycache__" \
-            -prune -exec rm -rf {} +
-
-          find lambda_package -type f -name "*.pyc" -delete
+          cp -r backend pharma_rag lambda_package/
+          cp backend/requirements-lambda.txt lambda_package/requirements.txt
+          printf '\nboto3>=1.34,<2\n' >> lambda_package/requirements.txt
+          find lambda_package -type d -name __pycache__ -prune -exec rm -rf {} +
+          find lambda_package -type f -name '*.pyc' -delete
 
       - name: Validate SAM template
         run: |
@@ -61,6 +56,14 @@ jobs:
         run: |
           sam build \
             --template-file template.yml
+
+      - name: Check uncompressed Lambda package sizes
+        run: |
+          for resource in PharmaCareFunction ClinicalReviewFunction; do
+            size=$(du -sb ".aws-sam/build/$resource" | cut -f1)
+            echo "$resource: $size bytes"
+            test "$size" -lt 262144000 || { echo "Package too large: $resource"; exit 1; }
+          done
 
       - name: Deploy PharmaCare AI
         env:

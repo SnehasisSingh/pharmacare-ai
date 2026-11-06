@@ -38,6 +38,91 @@ Globals:
         QDRANT_COLLECTION: medical_knowledge
 
 Resources:
+  ClinicalCasesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub '${AWS::StackName}-clinical-cases'
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - {AttributeName: case_id, AttributeType: S}
+        - {AttributeName: status, AttributeType: S}
+        - {AttributeName: created_at, AttributeType: S}
+      KeySchema:
+        - {AttributeName: case_id, KeyType: HASH}
+      GlobalSecondaryIndexes:
+        - IndexName: StatusCreatedIndex
+          KeySchema:
+            - {AttributeName: status, KeyType: HASH}
+            - {AttributeName: created_at, KeyType: RANGE}
+          Projection: {ProjectionType: ALL}
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  ClinicalUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      AdminCreateUserConfig: {AllowAdminCreateUserOnly: true}
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+  PatientGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: {GroupName: patient, UserPoolId: !Ref ClinicalUserPool}
+  DoctorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: {GroupName: doctor, UserPoolId: !Ref ClinicalUserPool}
+  ClinicalUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref ClinicalUserPool
+      ClientName: !Sub '${AWS::StackName}-streamlit-client'
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+  ClinicalReviewApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Stage
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt ClinicalUserPool.Arn
+  ClinicalReviewFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-clinical-review-api'
+      CodeUri: lambda_package/
+      Handler: backend.clinical_review.handler.handler
+      Environment:
+        Variables:
+          PHARMACARE_CASES_TABLE: !Ref ClinicalCasesTable
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy: {TableName: !Ref ClinicalCasesTable}
+      Events:
+        SubmitCase:
+          Type: Api
+          Properties: {RestApiId: !Ref ClinicalReviewApi, Path: /cases, Method: POST}
+        ReadCase:
+          Type: Api
+          Properties: {RestApiId: !Ref ClinicalReviewApi, Path: '/cases/{case_id}', Method: GET}
+        ListCases:
+          Type: Api
+          Properties: {RestApiId: !Ref ClinicalReviewApi, Path: /doctor/cases, Method: GET}
+        DecideCase:
+          Type: Api
+          Properties: {RestApiId: !Ref ClinicalReviewApi, Path: '/doctor/cases/{case_id}', Method: POST}
+
   PharmaCareFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -68,3 +153,13 @@ Outputs:
   PharmaCareFunctionName:
     Description: Lambda function name
     Value: !Ref PharmaCareFunction
+
+  ClinicalReviewApiUrl:
+    Description: Authenticated clinical review API URL
+    Value: !Sub 'https://${ClinicalReviewApi}.execute-api.${AWS::Region}.amazonaws.com/Stage'
+  ClinicalUserPoolId:
+    Value: !Ref ClinicalUserPool
+  ClinicalUserPoolClientId:
+    Value: !Ref ClinicalUserPoolClient
+  ClinicalCasesTableName:
+    Value: !Ref ClinicalCasesTable
