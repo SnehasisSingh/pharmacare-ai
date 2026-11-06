@@ -88,15 +88,17 @@ Resources:
       GenerateSecret: false
       ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
       PreventUserExistenceErrors: ENABLED
-  ClinicalReviewApi:
+  ServerlessRestApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Stage
       Auth:
-        DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt ClinicalUserPool.Arn
+            Identity:
+              Header: Authorization
+
   ClinicalReviewFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -112,17 +114,39 @@ Resources:
       Events:
         SubmitCase:
           Type: Api
-          Properties: {RestApiId: !Ref ClinicalReviewApi, Path: /cases, Method: POST}
+          Properties:
+            RestApiId: !Ref ServerlessRestApi
+            Path: /cases
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
         ReadCase:
           Type: Api
-          Properties: {RestApiId: !Ref ClinicalReviewApi, Path: '/cases/{case_id}', Method: GET}
+          Properties:
+            RestApiId: !Ref ServerlessRestApi
+            Path: /cases/{case_id}
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
         ListCases:
           Type: Api
-          Properties: {RestApiId: !Ref ClinicalReviewApi, Path: /doctor/cases, Method: GET}
+          Properties:
+            RestApiId: !Ref ServerlessRestApi
+            Path: /doctor/cases
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
         DecideCase:
           Type: Api
-          Properties: {RestApiId: !Ref ClinicalReviewApi, Path: '/doctor/cases/{case_id}', Method: POST}
-
+          Properties:
+            RestApiId: !Ref ServerlessRestApi
+            Path: /doctor/cases/{case_id}
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
   PharmaCareFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -135,19 +159,25 @@ Resources:
         HealthApi:
           Type: Api
           Properties:
+            RestApiId: !Ref ServerlessRestApi
             Path: /health
             Method: GET
+            Auth:
+              Authorizer: NONE
+
         MedicalAskApi:
           Type: Api
           Properties:
+            RestApiId: !Ref ServerlessRestApi
             Path: /medical/ask
             Method: POST
-
+            Auth:
+              Authorizer: NONE
 Outputs:
   PharmaCareApiUrl:
-    Description: API Gateway base URL
+    Description: Shared PharmaCare API Gateway URL
     Value: !Sub
-      - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+      - 'https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/Stage'
       - ApiId: !Ref ServerlessRestApi
 
   PharmaCareFunctionName:
