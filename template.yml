@@ -93,6 +93,7 @@ Resources:
     Properties:
       StageName: Stage
       Auth:
+        DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt ClinicalUserPool.Arn
@@ -118,8 +119,6 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /cases
             Method: POST
-            Auth:
-              Authorizer: CognitoAuthorizer
 
         ReadCase:
           Type: Api
@@ -127,8 +126,6 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /cases/{case_id}
             Method: GET
-            Auth:
-              Authorizer: CognitoAuthorizer
 
         ListCases:
           Type: Api
@@ -136,8 +133,6 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /doctor/cases
             Method: GET
-            Auth:
-              Authorizer: CognitoAuthorizer
 
         DecideCase:
           Type: Api
@@ -145,8 +140,7 @@ Resources:
             RestApiId: !Ref ServerlessRestApi
             Path: /doctor/cases/{case_id}
             Method: POST
-            Auth:
-              Authorizer: CognitoAuthorizer
+ 
   PharmaCareFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -173,6 +167,7 @@ Resources:
             Method: POST
             Auth:
               Authorizer: NONE
+
 Outputs:
   PharmaCareApiUrl:
     Description: Shared PharmaCare API Gateway URL
@@ -185,11 +180,19 @@ Outputs:
     Value: !Ref PharmaCareFunction
 
   ClinicalReviewApiUrl:
-    Description: Authenticated clinical review API URL
-    Value: !Sub 'https://${ClinicalReviewApi}.execute-api.${AWS::Region}.amazonaws.com/Stage'
+    Description: Clinical review API URL using shared API Gateway
+    Value: !Sub
+      - 'https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/Stage'
+      - ApiId: !Ref ServerlessRestApi
+
   ClinicalUserPoolId:
+    Description: Cognito User Pool ID
     Value: !Ref ClinicalUserPool
+
   ClinicalUserPoolClientId:
+    Description: Cognito application client ID
     Value: !Ref ClinicalUserPoolClient
+
   ClinicalCasesTableName:
+    Description: DynamoDB clinical cases table name
     Value: !Ref ClinicalCasesTable
