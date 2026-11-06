@@ -1,3 +1,4 @@
+
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: PharmaCare AI - shared medical RAG and clinical review API
@@ -6,19 +7,28 @@ Parameters:
   AnthropicApiKey:
     Type: String
     NoEcho: true
+
   QdrantApiKey:
     Type: String
     NoEcho: true
+
   QdrantUrl:
     Type: String
+
   ClaudeModel:
     Type: String
     Default: claude-haiku-5-5
 
+  ClinicalCasesTableName:
+    Type: String
+    Default: pharmacare-ai-dev-clinical-cases
+    Description: Existing DynamoDB clinical cases table
+
 Globals:
   Function:
     Runtime: python3.12
-    Architectures: [x86_64]
+    Architectures:
+      - x86_64
     Timeout: 28
     MemorySize: 1024
     Environment:
@@ -30,36 +40,6 @@ Globals:
         QDRANT_COLLECTION: medical_knowledge
 
 Resources:
-  ClinicalCasesTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      TableName: !Sub '${AWS::StackName}-clinical-cases'
-      BillingMode: PAY_PER_REQUEST
-      SSESpecification:
-        SSEEnabled: true
-      AttributeDefinitions:
-        - AttributeName: case_id
-          AttributeType: S
-        - AttributeName: status
-          AttributeType: S
-        - AttributeName: created_at
-          AttributeType: S
-      KeySchema:
-        - AttributeName: case_id
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: StatusCreatedIndex
-          KeySchema:
-            - AttributeName: status
-              KeyType: HASH
-            - AttributeName: created_at
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
 
   ClinicalUserPool:
     Type: AWS::Cognito::UserPool
@@ -115,14 +95,18 @@ Resources:
       FunctionName: !Sub '${AWS::StackName}-clinical-review-api'
       CodeUri: lambda_package/
       Handler: backend.clinical_review.handler.handler
+
       Environment:
         Variables:
-          PHARMACARE_CASES_TABLE: !Ref ClinicalCasesTable
+          PHARMACARE_CASES_TABLE: !Ref ClinicalCasesTableName
+
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
-            TableName: !Ref ClinicalCasesTable
+            TableName: !Ref ClinicalCasesTableName
+
       Events:
+
         SubmitCase:
           Type: Api
           Properties:
@@ -131,6 +115,7 @@ Resources:
             Method: POST
             Auth:
               Authorizer: CognitoAuthorizer
+
         ReadCase:
           Type: Api
           Properties:
@@ -139,6 +124,7 @@ Resources:
             Method: GET
             Auth:
               Authorizer: CognitoAuthorizer
+
         ListCases:
           Type: Api
           Properties:
@@ -147,6 +133,7 @@ Resources:
             Method: GET
             Auth:
               Authorizer: CognitoAuthorizer
+
         DecideCase:
           Type: Api
           Properties:
@@ -162,23 +149,33 @@ Resources:
       FunctionName: pharmacare-ai-api
       CodeUri: lambda_package/
       Handler: backend.api.handler.lambda_handler
+
       Policies:
         - AWSLambdaBasicExecutionRole
+
       Events:
+
         HealthApi:
           Type: Api
           Properties:
             RestApiId: !Ref PharmaCareApi
             Path: /health
             Method: GET
+            Auth:
+              Authorizer: NONE
+
         MedicalAskApi:
           Type: Api
           Properties:
             RestApiId: !Ref PharmaCareApi
             Path: /medical/ask
             Method: POST
+            Auth:
+              Authorizer: NONE
+
 
 Outputs:
+
   PharmaCareApiUrl:
     Description: Shared PharmaCare API Gateway URL
     Value: !Sub 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Dev'
@@ -197,4 +194,4 @@ Outputs:
     Value: !Ref ClinicalUserPoolClient
 
   ClinicalCasesTableName:
-    Value: !Ref ClinicalCasesTable
+    Value: !Ref ClinicalCasesTableName
