@@ -101,7 +101,7 @@ Resources:
   PharmaCareApi:
     Type: AWS::Serverless::Api
     Properties:
-      StageName: Stage
+      StageName: Dev
       Auth:
         Authorizers:
           CognitoAuthorizer:
@@ -181,15 +181,20 @@ Resources:
 Outputs:
   PharmaCareApiUrl:
     Description: Shared PharmaCare API Gateway URL
-    Value: !Sub 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Stage'
+    Value: !Sub 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Dev'
+
   ClinicalReviewApiUrl:
-    Description: Same API Gateway base URL; clinical endpoints require Cognito
-    Value: !Sub 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Stage'
+    Description: Clinical Review API URL
+    Value: !Sub 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Dev'
+
   PharmaCareFunctionName:
     Value: !Ref PharmaCareFunction
+
   ClinicalUserPoolId:
     Value: !Ref ClinicalUserPool
+
   ClinicalUserPoolClientId:
     Value: !Ref ClinicalUserPoolClient
+
   ClinicalCasesTableName:
     Value: !Ref ClinicalCasesTable
