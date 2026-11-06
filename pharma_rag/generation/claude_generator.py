@@ -8,7 +8,7 @@ from anthropic import Anthropic, APIError
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = os.getenv("CLAUDE_MODEL", "claude-haiku-5-5")
-MAX_TOKENS = 700
+MAX_TOKENS = 4096
 
 SYSTEM_PROMPT = """
 You are PharmaCare AI, an educational medical knowledge assistant.
@@ -166,15 +166,33 @@ Include relevant source document names and page numbers.
                 }
             ]
         )
-
+        logger.info(
+            "Claude response metadata: "
+            "model=%s, stop_reason=%s, "
+            "content_types=%s, input_tokens=%s, output_tokens=%s",
+            response.model,
+            response.stop_reason,
+            [block.type for block in response.content],
+            response.usage.input_tokens,
+            response.usage.output_tokens
+        )
         answer = "\n".join(
             block.text
             for block in response.content
             if block.type == "text"
+            and getattr(block, "text", None)
         ).strip()
 
         if not answer:
-            raise RuntimeError("Claude returned an empty response.")
+            logger.error(
+                "Claude returned no usable text. "
+                "stop_reason=%s, content_types=%s",
+                response.stop_reason,
+                [block.type for block in response.content]
+            )
+            raise RuntimeError(
+                "Claude response did not contain usable text."
+            )
 
         logger.info(
             "Claude answer generated successfully. "
