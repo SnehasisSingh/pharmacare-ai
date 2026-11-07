@@ -30,7 +30,7 @@ def check_password(password,stored):
 def issue_token(user):
     now=int(time.time())
     header=encode(json.dumps({'alg':'HS256','typ':'JWT'},separators=(',',':')).encode())
-    payload=encode(json.dumps({'sub':user['user_id'],'iat':now,'exp':now+3600,'ver':user.get('session_version',1),'iss':'pharmacare-ai'},separators=(',',':')).encode())
+    payload=encode(json.dumps({'sub':user['user_id'],'iat':now,'exp':now+3600,'ver':int(user.get('session_version',1)),'iss':'pharmacare-ai'},separators=(',',':')).encode())
     data=(header+'.'+payload).encode()
     return header+'.'+payload+'.'+encode(hmac.new(secret(),data,hashlib.sha256).digest())
 
