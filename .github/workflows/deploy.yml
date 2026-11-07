@@ -59,7 +59,7 @@ jobs:
 
       - name: Check uncompressed Lambda package sizes
         run: |
-          for resource in PharmaCareFunction ClinicalReviewFunction AuthFunction; do
+          for resource in PharmaCareFunction ClinicalReviewFunction; do
             size=$(du -sb ".aws-sam/build/$resource" | cut -f1)
             echo "$resource: $size bytes"
             test "$size" -lt 262144000 || { echo "Package too large: $resource"; exit 1; }

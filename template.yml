@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: PharmaCare AI - custom auth and managed OpenSearch migration
+Description: PharmaCare AI - public synthetic demo with two UI paths, no login
 Parameters:
   AnthropicApiKey:
     Type: String
@@ -16,9 +16,6 @@ Parameters:
   ClinicalCasesTableName:
     Type: String
     Default: pharmacare-ai-dev-clinical-cases
-  OpenSearchInstanceType:
-    Type: String
-    Default: t3.small.search
 Globals:
   Function:
     Runtime: python3.12
@@ -33,98 +30,6 @@ Globals:
         QDRANT_URL: !Ref QdrantUrl
         QDRANT_COLLECTION: medical_knowledge
 Resources:
-  # Keep the existing pool and client for migration rollback; application no longer uses Cognito.
-  ClinicalUserPool:
-    Type: AWS::Cognito::UserPool
-    DeletionPolicy: Retain
-    Properties:
-      UserPoolName: !Sub '${AWS::StackName}-users'
-      AdminCreateUserConfig:
-        AllowAdminCreateUserOnly: true
-      Policies:
-        PasswordPolicy:
-          MinimumLength: 12
-          RequireUppercase: true
-          RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: true
-  PatientGroup:
-    Type: AWS::Cognito::UserPoolGroup
-    Properties:
-      GroupName: patient
-      UserPoolId: !Ref ClinicalUserPool
-  DoctorGroup:
-    Type: AWS::Cognito::UserPoolGroup
-    Properties:
-      GroupName: doctor
-      UserPoolId: !Ref ClinicalUserPool
-  ClinicalUserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      UserPoolId: !Ref ClinicalUserPool
-      ClientName: !Sub '${AWS::StackName}-streamlit-client'
-      GenerateSecret: false
-      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
-      PreventUserExistenceErrors: ENABLED
-  UsersTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      TableName: !Sub '${AWS::StackName}-users-db'
-      BillingMode: PAY_PER_REQUEST
-      SSESpecification:
-        SSEEnabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      AttributeDefinitions:
-        - AttributeName: pk
-          AttributeType: S
-        - AttributeName: sk
-          AttributeType: S
-      KeySchema:
-        - AttributeName: pk
-          KeyType: HASH
-        - AttributeName: sk
-          KeyType: RANGE
-  SessionSecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub '${AWS::StackName}-session-signing-key'
-      GenerateSecretString:
-        PasswordLength: 64
-        ExcludePunctuation: true
-  UserSearchDomain:
-    Type: AWS::OpenSearchService::Domain
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      DomainName: !Sub '${AWS::StackName}-users'
-      EngineVersion: OpenSearch_2.17
-      ClusterConfig:
-        InstanceType: !Ref OpenSearchInstanceType
-        InstanceCount: 1
-        DedicatedMasterEnabled: false
-        ZoneAwarenessEnabled: false
-      EBSOptions:
-        EBSEnabled: true
-        VolumeType: gp3
-        VolumeSize: 20
-      EncryptionAtRestOptions:
-        Enabled: true
-      NodeToNodeEncryptionOptions:
-        Enabled: true
-      DomainEndpointOptions:
-        EnforceHTTPS: true
-        TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
-      AccessPolicies:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
-            Action: 'es:ESHttp*'
-            Resource: !Sub 'arn:${AWS::Partition}:es:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-users/*'
   PharmaCareApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -159,19 +64,10 @@ Resources:
       Environment:
         Variables:
           PHARMACARE_CASES_TABLE: !Ref ClinicalCasesTableName
-          PHARMACARE_USERS_TABLE: !Ref UsersTable
-          PHARMACARE_SESSION_SECRET_ARN: !Ref SessionSecret
-          PHARMACARE_OPENSEARCH_ENDPOINT: !Sub 'https://${UserSearchDomain.DomainEndpoint}'
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
             TableName: !Ref ClinicalCasesTableName
-        - DynamoDBReadPolicy:
-            TableName: !Ref UsersTable
-        - Statement:
-            - Effect: Allow
-              Action: [secretsmanager:GetSecretValue]
-              Resource: !Ref SessionSecret
       Events:
         SubmitCase:
           Type: Api
@@ -197,66 +93,6 @@ Resources:
             RestApiId: !Ref PharmaCareApi
             Path: /doctor/cases/{case_id}
             Method: POST
-  AuthFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-auth-api'
-      CodeUri: lambda_package/
-      Handler: backend.auth.handler.handler
-      Timeout: 60
-      Environment:
-        Variables:
-          PHARMACARE_USERS_TABLE: !Ref UsersTable
-          PHARMACARE_SESSION_SECRET_ARN: !Ref SessionSecret
-          PHARMACARE_OPENSEARCH_ENDPOINT: !Sub 'https://${UserSearchDomain.DomainEndpoint}'
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-        - Statement:
-            - Effect: Allow
-              Action: [secretsmanager:GetSecretValue]
-              Resource: !Ref SessionSecret
-            - Effect: Allow
-              Action: ['es:ESHttp*']
-              Resource: !Sub 'arn:${AWS::Partition}:es:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-users/*'
-      Events:
-        Login:
-          Type: Api
-          Properties:
-            RestApiId: !Ref PharmaCareApi
-            Path: /auth/login
-            Method: POST
-        Me:
-          Type: Api
-          Properties:
-            RestApiId: !Ref PharmaCareApi
-            Path: /auth/me
-            Method: GET
-        AdminUsers:
-          Type: Api
-          Properties:
-            RestApiId: !Ref PharmaCareApi
-            Path: /admin/users
-            Method: GET
-        CreateUser:
-          Type: Api
-          Properties:
-            RestApiId: !Ref PharmaCareApi
-            Path: /admin/users
-            Method: POST
-        UpdateUser:
-          Type: Api
-          Properties:
-            RestApiId: !Ref PharmaCareApi
-            Path: /admin/users/{user_id}
-            Method: PATCH
-        Rebuild:
-          Type: Api
-          Properties:
-            RestApiId: !Ref PharmaCareApi
-            Path: /admin/opensearch/rebuild
-            Method: POST
 Outputs:
   PharmaCareApiUrl:
     Value: !Sub 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Dev'
@@ -264,13 +100,3 @@ Outputs:
     Value: !Sub 'https://${PharmaCareApi}.execute-api.${AWS::Region}.amazonaws.com/Dev'
   PharmaCareFunctionName:
     Value: !Ref PharmaCareFunction
-  ClinicalUserPoolId:
-    Value: !Ref ClinicalUserPool
-  ClinicalUserPoolClientId:
-    Value: !Ref ClinicalUserPoolClient
-  ClinicalCasesTableName:
-    Value: !Ref ClinicalCasesTableName
-  UsersTableName:
-    Value: !Ref UsersTable
-  OpenSearchDomainEndpoint:
-    Value: !GetAtt UserSearchDomain.DomainEndpoint
