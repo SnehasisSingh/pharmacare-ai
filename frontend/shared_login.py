@@ -21,9 +21,15 @@ def login_widget(base,role):
         try:
             r=requests.post(base+'/auth/login',json={'username':username,'password':password},timeout=20)
             data=r.json()
-            if r.ok and data['user']['role']==role:
-                st.session_state[key]=data
+            if r.ok and data.get("user", {}).get("role") == role:
+                st.session_state[key] = data
                 st.rerun()
-            else:st.error('Login failed or incorrect role')
+            elif r.ok:
+                st.error("Incorrect role for this dashboard.")
+            else:
+                st.error(
+                    f"Login failed: HTTP {r.status_code} - "
+                    f"{data.get('error', 'Unknown error')}"
+                )
         except (requests.RequestException,ValueError,KeyError):st.error('Login service unavailable')
     return ''

@@ -57,7 +57,12 @@ def handler(event,context):
         if method=='POST' and path=='/admin/opensearch/rebuild':
             return reply(200,opensearch_sync.rebuild())
         return reply(404,{'error':'Not found'})
-    except (ValueError,KeyError,TypeError):return reply(400,{'error':'Invalid request'})
+    except (ValueError, KeyError, TypeError) as exc:
+        logger.exception(
+            "Auth request failed: %s",
+            type(exc).__name__
+        )
+        return reply(400, {"error": "Invalid request"})
     except ClientError as e:
         if e.response['Error']['Code']=='TransactionCanceledException':return reply(409,{'error':'Username already exists or transaction failed'})
         logger.exception('Auth database error');return reply(500,{'error':'Database error'})
