@@ -24,15 +24,11 @@ def parse_body(event):
     return value
 
 def identity(event):
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    user_id = claims.get('sub')
-    groups = claims.get('cognito:groups', '')
-    if isinstance(groups, str):
-        # API Gateway can stringify group lists as '[doctor]' or 'doctor'.
-        groups = groups.strip('[]').replace(' ', '').split(',')
-    if not user_id:
+    from backend.auth.handler import identity as authenticate
+    user = authenticate(event)
+    if not user:
         return None, set()
-    return user_id, set(groups)
+    return user['user_id'], {user['role']}
 
 def handler(event, context):
     try:

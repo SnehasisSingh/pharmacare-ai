@@ -1,4 +1,7 @@
 """PharmaCare AI patient portal (synthetic-data educational prototype)."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -6,7 +9,8 @@ from pathlib import Path
 import requests
 import streamlit as st
 
-DEFAULT_API_BASE = "https://sv9c73tgpl.execute-api.ap-southeast-2.amazonaws.com/Stage"
+DEFAULT_API_BASE = "https://882bi13uqb.execute-api.ap-southeast-2.amazonaws.com/Dev"
+REVIEW_API_BASE = os.getenv("PHARMACARE_REVIEW_API_BASE_URL", os.getenv("PHARMACARE_API_BASE_URL", DEFAULT_API_BASE)).rstrip("/")
 API_BASE = os.getenv("PHARMACARE_API_BASE_URL", DEFAULT_API_BASE).rstrip("/")
 REQUEST_TIMEOUT = (10, 110)
 
@@ -42,6 +46,32 @@ def call_medical_api(question: str) -> dict:
     if not isinstance(payload, dict) or not isinstance(payload.get("answer"), str) or not payload["answer"].strip():
         raise RuntimeError("The medical API did not return a usable assessment.")
     return payload
+
+
+def submit_clinical_case(question: str, id_token: str) -> dict:
+    """Submit synthetic scenario to authenticated clinical workflow.
+
+    Current /cases backend independently regenerates the draft before storing it.
+    This intentionally does NOT send the first /medical/ask answer as an approved report.
+    """
+    try:
+        response = requests.post(
+            f"{REVIEW_API_BASE}/cases",
+            json={"question": question},
+            headers={"Authorization": "Bearer " + id_token, "Content-Type": "application/json"},
+            timeout=(10, 110),
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError("Clinical case submission failed to connect; check review API and Lambda logs.") from exc
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise RuntimeError(f"Clinical case API returned HTTP {response.status_code} with invalid JSON.") from exc
+    if not response.ok:
+        raise RuntimeError(f"Clinical case API returned HTTP {response.status_code}: {data.get('error', 'Request failed')}")
+    if not data.get("case_id"):
+        raise RuntimeError("Clinical case API returned no case_id; persistence is unconfirmed.")
+    return data
 
 
 def build_question(age, duration, symptoms, extra):
@@ -85,7 +115,7 @@ def draft_report(result, age, duration, symptoms):
 
 
 st.markdown('<div class="hero"><h1>🩺 PharmaCare AI</h1><p>Medical knowledge assistant · Patient prototype</p></div>', unsafe_allow_html=True)
-st.warning("**Educational demo only.** Use fictional patient scenarios. This system is not validated for clinical use, does not diagnose or prescribe, and has no doctor approval workflow yet.")
+st.warning("**Educational demo only.** Use fictional patient scenarios. This system is not validated for clinical use, does not diagnose or prescribe; any doctor-review workflow is a synthetic-data prototype.")
 st.error("**Emergency warning:** For severe breathing problems, chest pain, confusion, seizures, or other immediately dangerous symptoms, seek emergency medical care now. Do not wait for an AI assessment.")
 
 with st.sidebar:
@@ -99,6 +129,10 @@ with st.sidebar:
             st.success(f"API status: {status}")
         except (requests.RequestException, ValueError):
             st.error("Backend health check failed.")
+    st.divider()
+    from shared_login import login_widget
+    patient_token = login_widget(REVIEW_API_BASE, 'patient')
+    st.caption('Cases are saved automatically when signed in as a patient.')
     st.divider()
     st.caption("Phase 1: Patient intake + educational RAG answer")
     st.caption("Phase 2: Doctor approval, authentication and case persistence")
@@ -123,6 +157,8 @@ with left:
             st.error("Please provide a little more detail about the symptoms.")
         else:
             question = build_question(age, duration, symptoms, extra)
+            st.session_state.pop("clinical_review_case_id", None)
+            st.session_state.pop("clinical_review_status", None)
             with st.spinner("Retrieving medical references and requesting Claude assessment…"):
                 try:
                     result = call_medical_api(question)
@@ -133,11 +169,29 @@ with left:
                         "result": result, "age": age, "duration": duration, "symptoms": symptoms
                     }
                     st.success("Educational assessment generated.")
+                    # One submission per explicit Generate click, never on Streamlit reruns.
+                    if not patient_token.strip():
+                        st.warning("Assessment generated, but NOT saved to DynamoDB. Log in as a patient in the sidebar and generate again to auto-submit.")
+                    else:
+                        with st.spinner("Submitting case for doctor review (backend creates its own draft)…"):
+                            try:
+                                saved = submit_clinical_case(question, patient_token.strip())
+                            except RuntimeError as exc:
+                                st.error(f"Assessment generated, but clinical case was NOT confirmed saved: {exc}")
+                            else:
+                                st.session_state["clinical_review_case_id"] = saved["case_id"]
+                                st.session_state["clinical_review_status"] = saved.get("status", "PENDING_REVIEW")
+                                st.success(f"Clinical case saved. Case ID: {saved['case_id']}")
+                                st.info("Awaiting doctor review. The generated assessment is not an approved report.")
+                                if saved.get("emergency_warning"):
+                                    st.error("Emergency symptoms flagged: seek immediate emergency care for real emergencies; do not wait for review.")
 
 with right:
     st.subheader("AI assessment")
     latest = st.session_state.get("latest_assessment")
     if latest:
+        if st.session_state.get("clinical_review_case_id"):
+            st.info(f"Clinical case: {st.session_state['clinical_review_case_id']} · {st.session_state.get('clinical_review_status', 'PENDING_REVIEW')}")
         result = latest["result"]
         st.info("**Status: AI draft — not doctor reviewed or approved.**")
         st.markdown(result["answer"])

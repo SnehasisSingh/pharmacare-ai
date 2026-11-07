@@ -1,4 +1,7 @@
-"""Doctor review prototype. Obtain an ID token from Cognito (see README)."""
+"""Doctor review prototype using PharmaCare custom login."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import os
 import requests
 import streamlit as st
@@ -6,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title='PharmaCare | Clinical Review', page_icon='🩺', layout='wide')
 st.title('PharmaCare AI · Clinical Review')
 st.caption('Authenticated prototype · doctor approval required before patient release')
-base = os.getenv('PHARMACARE_REVIEW_API_BASE_URL', '').rstrip('/')
+base = os.getenv('PHARMACARE_REVIEW_API_BASE_URL', 'https://882bi13uqb.execute-api.ap-southeast-2.amazonaws.com/Dev').rstrip('/')
 if not base:
     st.error('Set PHARMACARE_REVIEW_API_BASE_URL before launching this dashboard.')
     st.stop()
@@ -14,18 +17,15 @@ if not base.startswith('https://'):
     st.error('The review API must use HTTPS.')
     st.stop()
 with st.sidebar:
-    st.subheader('Doctor access')
-    token = st.text_input('Cognito ID token', type='password', help='For local prototype only. Use a managed OIDC login before production.')
-    st.caption('Do not share or commit tokens.')
-    if st.button('Clear token'):
-        st.rerun()
+    from shared_login import login_widget
+    token = login_widget(base, 'doctor')
 if not token:
-    st.info('Provide a Cognito ID token for a user in the doctor group.')
+    st.info('Sign in as a doctor to review cases.')
     st.stop()
 
 def api(method, path, **kwargs):
     try:
-        response = requests.request(method, base + path, headers={'Authorization': token, 'Content-Type': 'application/json'}, timeout=35, **kwargs)
+        response = requests.request(method, base + path, headers={'Authorization': 'Bearer '+token, 'Content-Type': 'application/json'}, timeout=35, **kwargs)
         if response.status_code >= 400:
             st.error(f'API error {response.status_code}: {response.json().get("error", "Request failed")}')
             return None
